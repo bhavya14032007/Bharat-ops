@@ -1,0 +1,118 @@
+import React, { useState, useRef } from 'react';
+import { Camera, Loader2, Upload, CheckCircle2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { GoogleGenAI } from '@google/genai';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { collection, addDoc } from 'firebase/firestore';
+import { cn } from '../lib/utils';
+
+export default function VisionInventory() {
+  const { t } = useTranslation();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCapture = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessing(true);
+    setResult(null);
+
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = async () => {
+        const base64Image = (reader.result as string).split(',')[1];
+        
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const model = ai.models.generateContent({
+          model: 'gemini-1.5-flash',
+          contents: [
+            {
+              parts: [
+                { text: "Extract inventory items from this handwritten receipt or stock list. Return a JSON array of objects: [{ 'name': string, 'quantity': number, 'unit': string, 'price': number }]. If details are missing, leave null. Return ONLY the JSON array." },
+                { inlineData: { mimeType: 'image/jpeg', data: base64Image } }
+              ]
+            }
+          ]
+        });
+
+        const response = await model;
+        const jsonStr = response.text.replace(/```json|```/g, '').trim();
+        const items = JSON.parse(jsonStr);
+        setResult(JSON.stringify(items, null, 2));
+        
+        // Save to Firestore
+        for (const item of items) {
+          await addDoc(collection(db, 'inventory'), {
+            ...item,
+            lastUpdated: new Date().toISOString()
+          });
+        }
+      };
+    } catch (err) {
+      console.error('Error processing image:', err);
+      handleFirestoreError(err, OperationType.WRITE, 'inventory');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center p-6 space-y-8 h-full">
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-gray-800">{t('vision_inventory')}</h2>
+        <p className="text-gray-500 mt-2">Take a photo of a receipt or stock list to update inventory</p>
+      </div>
+
+      <div className="flex flex-col items-center space-y-4 w-full max-w-sm">
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleCapture}
+          className="hidden"
+          ref={fileInputRef}
+        />
+        
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isProcessing}
+          className={cn(
+            "w-full h-48 border-2 border-dashed border-blue-300 rounded-2xl flex flex-col items-center justify-center space-y-4 transition-all active:scale-95",
+            isProcessing ? "bg-gray-50 opacity-50 cursor-not-allowed" : "bg-blue-50 hover:bg-blue-100"
+          )}
+        >
+          {isProcessing ? (
+            <Loader2 className="animate-spin text-blue-600" size={48} />
+          ) : (
+            <>
+              <Camera className="text-blue-600" size={48} />
+              <span className="text-blue-600 font-medium">{t('scan_receipt')}</span>
+            </>
+          )}
+        </button>
+
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isProcessing}
+          className="flex items-center space-x-2 text-gray-500 hover:text-gray-700"
+        >
+          <Upload size={20} />
+          <span>Upload from gallery</span>
+        </button>
+      </div>
+
+      {result && (
+        <div className="w-full max-w-md bg-green-50 border border-green-200 rounded-xl p-4 space-y-2">
+          <div className="flex items-center space-x-2 text-green-700 font-medium">
+            <CheckCircle2 size={20} />
+            <span>Items Extracted Successfully</span>
+          </div>
+          <pre className="text-xs overflow-auto whitespace-pre-wrap text-green-800">{result}</pre>
+        </div>
+      )}
+    </div>
+  );
+}

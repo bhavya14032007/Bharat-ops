@@ -1,0 +1,8 @@
+{
+  "name": "Bhasha-Ops",
+  "description": "AI-Powered SMB Operations Manager for Indian MSMEs with voice and visual AI support.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

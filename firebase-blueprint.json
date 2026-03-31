@@ -1,0 +1,66 @@
+{
+  "entities": {
+    "InventoryItem": {
+      "title": "Inventory Item",
+      "description": "Stock item in the shop",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the item" },
+        "quantity": { "type": "number", "description": "Current stock quantity" },
+        "unit": { "type": "string", "description": "Unit of measurement (kg, L, pcs)" },
+        "price": { "type": "number", "description": "Price per unit" },
+        "lastUpdated": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["name", "quantity", "unit", "price"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A sale or purchase record",
+      "type": "object",
+      "properties": {
+        "customerName": { "type": "string", "description": "Name of the customer" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "quantity": { "type": "number" },
+              "price": { "type": "number" }
+            }
+          }
+        },
+        "total": { "type": "number", "description": "Total amount" },
+        "type": { "type": "string", "enum": ["sale", "purchase"] },
+        "paymentMethod": { "type": "string", "enum": ["cash", "credit"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["total", "type", "paymentMethod", "timestamp"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer profile and balance",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "balance": { "type": "number", "description": "Outstanding credit balance" }
+      },
+      "required": ["name", "balance"]
+    }
+  },
+  "firestore": {
+    "/inventory/{itemId}": {
+      "schema": "InventoryItem",
+      "description": "Inventory items collection"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Transactions history"
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Customers list"
+    }
+  }
+}
