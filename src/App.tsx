@@ -19,6 +19,7 @@ export default function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -41,9 +42,15 @@ export default function App() {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'customers'));
 
+    const qTx = query(collection(db, 'transactions'), orderBy('timestamp', 'desc'));
+    const unsubTx = onSnapshot(qTx, (snapshot) => {
+      setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'transactions'));
+
     return () => {
       unsubInv();
       unsubCust();
+      unsubTx();
     };
   }, [user]);
 
@@ -159,6 +166,37 @@ export default function App() {
               </button>
             </div>
             <VoiceKhata />
+            
+            <div className="space-y-4 pt-4 border-t border-gray-100">
+              <h3 className="font-bold text-gray-800">Transaction History</h3>
+              <div className="space-y-3">
+                {transactions.length > 0 ? transactions.map((tx) => (
+                  <div key={tx.id} className="bg-white p-4 rounded-xl border border-gray-100 flex justify-between items-center shadow-sm">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-500">
+                        <Users size={20} />
+                      </div>
+                      <div>
+                        <p className="font-bold text-sm">{tx.customerName || 'Walk-in Customer'}</p>
+                        <p className="text-[10px] text-gray-400">
+                          {tx.items.map(item => `${item.quantity} ${item.name}`).join(', ')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={tx.type === 'sale' ? "text-green-600 font-bold text-sm" : "text-red-600 font-bold text-sm"}>
+                        {tx.type === 'sale' ? '+' : '-'}₹{tx.total}
+                      </p>
+                      <p className="text-[10px] text-gray-400">
+                        {new Date(tx.timestamp).toLocaleDateString()} {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                )) : (
+                  <p className="text-center text-gray-400 text-sm italic py-4">No transactions recorded yet</p>
+                )}
+              </div>
+            </div>
           </div>
         );
       case 'customers':

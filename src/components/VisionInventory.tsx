@@ -20,37 +20,43 @@ export default function VisionInventory() {
     setResult(null);
 
     try {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onloadend = async () => {
-        const base64Image = (reader.result as string).split(',')[1];
-        
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const model = ai.models.generateContent({
-          model: 'gemini-1.5-flash',
-          contents: [
-            {
-              parts: [
-                { text: "Extract inventory items from this handwritten receipt or stock list. Return a JSON array of objects: [{ 'name': string, 'quantity': number, 'unit': string, 'price': number }]. If details are missing, leave null. Return ONLY the JSON array." },
-                { inlineData: { mimeType: 'image/jpeg', data: base64Image } }
-              ]
-            }
-          ]
-        });
-
-        const response = await model;
-        const jsonStr = response.text.replace(/```json|```/g, '').trim();
-        const items = JSON.parse(jsonStr);
-        setResult(JSON.stringify(items, null, 2));
-        
-        // Save to Firestore
-        for (const item of items) {
-          await addDoc(collection(db, 'inventory'), {
-            ...item,
-            lastUpdated: new Date().toISOString()
-          });
+      const base64Image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [
+          {
+            parts: [
+              { text: "Extract inventory items from this handwritten receipt or stock list. Return a JSON array of objects: [{ 'name': string, 'quantity': number, 'unit': string, 'price': number }]. If details are missing, leave null. Return ONLY the JSON array." },
+              { inlineData: { mimeType: 'image/jpeg', data: base64Image } }
+            ]
+          }
+        ],
+        config: {
+          responseMimeType: 'application/json'
         }
-      };
+      });
+
+      const items = JSON.parse(response.text);
+      setResult(JSON.stringify(items, null, 2));
+      
+      // Save to Firestore
+      for (const item of items) {
+        const inventoryItem = {
+          name: item.name || 'Unknown Item',
+          quantity: typeof item.quantity === 'number' ? item.quantity : 0,
+          unit: item.unit || 'pcs',
+          price: typeof item.price === 'number' ? item.price : 0,
+          lastUpdated: new Date().toISOString()
+        };
+        await addDoc(collection(db, 'inventory'), inventoryItem);
+      }
     } catch (err) {
       console.error('Error processing image:', err);
       handleFirestoreError(err, OperationType.WRITE, 'inventory');

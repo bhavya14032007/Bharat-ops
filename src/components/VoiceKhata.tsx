@@ -51,35 +51,44 @@ export default function VoiceKhata() {
   const processAudio = async (audioBlob: Blob) => {
     setIsProcessing(true);
     try {
-      const reader = new FileReader();
-      reader.readAsDataURL(audioBlob);
-      reader.onloadend = async () => {
-        const base64Audio = (reader.result as string).split(',')[1];
-        
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const model = ai.models.generateContent({
-          model: 'gemini-1.5-flash',
-          contents: [
-            {
-              parts: [
-                { text: "You are a business assistant for Indian shopkeepers. Listen to this audio and extract the transaction details in JSON format. The user might speak in English, Hindi, or Hinglish. Extract: { 'customerName': string, 'items': [{ 'name': string, 'quantity': number, 'unit': string, 'price': number }], 'type': 'sale' | 'purchase', 'paymentMethod': 'cash' | 'credit', 'total': number }. If details are missing, make your best guess or leave null. Return ONLY the JSON object." },
-                { inlineData: { mimeType: 'audio/webm', data: base64Audio } }
-              ]
-            }
-          ]
-        });
+      const base64Audio = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(audioBlob);
+      });
+      
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [
+          {
+            parts: [
+              { text: "You are a business assistant for Indian shopkeepers. Listen to this audio and extract the transaction details in JSON format. The user might speak in English, Hindi, or Hinglish. Extract: { 'customerName': string, 'items': [{ 'name': string, 'quantity': number, 'unit': string, 'price': number }], 'type': 'sale' | 'purchase', 'paymentMethod': 'cash' | 'credit', 'total': number }. If details are missing, make your best guess or leave null. Return ONLY the JSON object." },
+              { inlineData: { mimeType: 'audio/webm', data: base64Audio } }
+            ]
+          }
+        ],
+        config: {
+          responseMimeType: 'application/json'
+        }
+      });
 
-        const response = await model;
-        const jsonStr = response.text.replace(/```json|```/g, '').trim();
-        const data = JSON.parse(jsonStr);
-        setTranscript(JSON.stringify(data, null, 2));
-        
-        // Save to Firestore
-        await addDoc(collection(db, 'transactions'), {
-          ...data,
-          timestamp: new Date().toISOString()
-        });
+      const data = JSON.parse(response.text);
+      setTranscript(JSON.stringify(data, null, 2));
+      
+      // Ensure mandatory fields for Firestore rules
+      const transactionData = {
+        customerName: data.customerName || 'Unknown',
+        items: data.items || [],
+        type: data.type || 'sale',
+        paymentMethod: data.paymentMethod || 'cash',
+        total: typeof data.total === 'number' ? data.total : 0,
+        timestamp: new Date().toISOString()
       };
+      
+      // Save to Firestore
+      await addDoc(collection(db, 'transactions'), transactionData);
     } catch (err) {
       console.error('Error processing audio:', err);
       handleFirestoreError(err, OperationType.WRITE, 'transactions');

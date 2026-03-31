@@ -22,16 +22,24 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    const q = query(collection(db, 'transactions'), orderBy('timestamp', 'desc'), limit(5));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    // Query for stats (all transactions from today)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const qStats = query(
+      collection(db, 'transactions'),
+      orderBy('timestamp', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(qStats, (snapshot) => {
       const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-      setRecentTransactions(txs);
+      setRecentTransactions(txs.slice(0, 5));
       
-      // Calculate today's stats
-      const today = new Date().toISOString().split('T')[0];
-      const todayTxs = txs.filter(tx => tx.timestamp.startsWith(today));
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todayTxs = txs.filter(tx => tx.timestamp.startsWith(todayStr));
+      
       const sales = todayTxs.filter(tx => tx.type === 'sale').reduce((acc, tx) => acc + tx.total, 0);
       const purchases = todayTxs.filter(tx => tx.type === 'purchase').reduce((acc, tx) => acc + tx.total, 0);
+      
       setStats(prev => ({ ...prev, sales, purchases }));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'transactions');
