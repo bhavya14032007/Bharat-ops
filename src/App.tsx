@@ -59,6 +59,19 @@ export default function App() {
     i18n.changeLanguage(newLang);
   };
 
+  const handleLogin = async () => {
+    try {
+      await signIn();
+    } catch (error: any) {
+      console.error('Login failed:', error);
+      if (error.code === 'auth/unauthorized-domain') {
+        alert('This domain is not authorized in Firebase. Please add your Vercel URL to the Authorized Domains in Firebase Console.');
+      } else {
+        alert(`Login error: ${error.message}`);
+      }
+    }
+  };
+
   if (!isAuthReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -78,7 +91,7 @@ export default function App() {
           <p className="text-gray-500 max-w-xs mx-auto">Smart operations manager for Indian MSMEs. Voice-powered, visual-first.</p>
         </div>
         <button
-          onClick={signIn}
+          onClick={handleLogin}
           className="w-full max-w-xs flex items-center justify-center space-x-3 bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg active:scale-95 transition-all"
         >
           <LogIn size={24} />
